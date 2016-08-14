@@ -3241,7 +3241,7 @@ int msm_ipc_router_get_curr_pkt_size(struct msm_ipc_port *port_ptr)
 	struct rr_packet *pkt;
 	int rc = 0;
 
-	if (unlikely(!port_ptr || port_ptr->type != CLIENT_PORT))
+	if (!port_ptr)
 		return -EINVAL;
 
 	mutex_lock(&port_ptr->port_rx_q_lock_lhc3);
@@ -3257,7 +3257,7 @@ int msm_ipc_router_get_curr_pkt_size(struct msm_ipc_port *port_ptr)
 
 int msm_ipc_router_bind_control_port(struct msm_ipc_port *port_ptr)
 {
-	if (!port_ptr)
+	if (unlikely(!port_ptr || port_ptr->type != CLIENT_PORT))
 		return -EINVAL;
 
 	down_write(&local_ports_lock_lhc2);
