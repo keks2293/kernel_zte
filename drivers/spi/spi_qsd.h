@@ -125,6 +125,10 @@
 #define SPI_OP_STATE                  0x00000003
 
 #define SPI_OP_STATE_CLEAR_BITS       0x2
+
+#define SPI_PINCTRL_STATE_DEFAULT "spi_default"
+#define SPI_PINCTRL_STATE_SLEEP "spi_sleep"
+
 enum msm_spi_state {
 	SPI_OP_STATE_RESET = 0x00000000,
 	SPI_OP_STATE_RUN   = 0x00000001,
@@ -560,3 +564,4 @@ static inline void msm_spi_clear_error_flags(struct msm_spi *dd)
 
 #endif
 #endif
+
