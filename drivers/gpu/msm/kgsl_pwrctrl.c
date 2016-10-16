@@ -50,9 +50,6 @@
 
 #define KGSL_MAX_BUSLEVELS	20
 
-#define DEFAULT_BUS_P 25
-#define DEFAULT_BUS_DIV (100 / DEFAULT_BUS_P)
-
 struct clk_pair {
 	const char *name;
 	uint map;
@@ -99,7 +96,6 @@ static struct clk_pair clks[KGSL_MAX_CLKS] = {
 
 static unsigned int ib_votes[KGSL_MAX_BUSLEVELS];
 static int last_vote_buslevel;
-static int max_vote_buslevel;
 
 static void kgsl_pwrctrl_clk(struct kgsl_device *device, int state,
 					int requested_state);
@@ -116,29 +112,6 @@ static void kgsl_pwrctrl_request_state(struct kgsl_device *device,
 static unsigned int kgsl_get_bw(void)
 {
 	return ib_votes[last_vote_buslevel];
-}
-
-/**
- * _ab_buslevel_update() - Return latest msm bus AB vote
- * @pwr: Pointer to the kgsl_pwrctrl struct
- * @ab: Pointer to be updated with the calculated AB vote
- */
-static void _ab_buslevel_update(struct kgsl_pwrctrl *pwr,
-				unsigned long *ab)
-{
-	unsigned int ib = ib_votes[last_vote_buslevel];
-	unsigned int max_bw = ib_votes[max_vote_buslevel];
-	if (!ab)
-		return;
-	if (ib == 0)
-		*ab = 0;
-	else if (!pwr->bus_percent_ab)
-		*ab = DEFAULT_BUS_P * ib / 100;
-	else
-		*ab = (pwr->bus_percent_ab * max_bw) / 100;
-
-	if (*ab > ib)
-		*ab = ib;
 }
 
 /**
@@ -194,7 +167,6 @@ void kgsl_pwrctrl_buslevel_update(struct kgsl_device *device,
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 	int cur = pwr->pwrlevels[pwr->active_pwrlevel].bus_freq;
 	int buslevel = 0;
-	unsigned long ab;
 	if (!pwr->pcl)
 		return;
 	/* the bus should be ON to update the active frequency */
@@ -214,12 +186,10 @@ void kgsl_pwrctrl_buslevel_update(struct kgsl_device *device,
 	}
 	trace_kgsl_buslevel(device, pwr->active_pwrlevel, buslevel);
 	last_vote_buslevel = buslevel;
-	/* buslevel is the IB vote, update the AB */
-	_ab_buslevel_update(pwr, &ab);
 	/* vote for ocmem */
 	msm_bus_scale_client_update_request(pwr->pcl, buslevel);
 	/* ask a governor to vote on behalf of us */
-	devfreq_vbif_update_bw(ib_votes[last_vote_buslevel], ab);
+	devfreq_vbif_update_bw();
 }
 EXPORT_SYMBOL(kgsl_pwrctrl_buslevel_update);
 
@@ -285,7 +255,6 @@ void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 	 * frequency increases.
 	 */
 	pwr->bus_mod = 0;
-	pwr->bus_percent_ab = 0;
 	kgsl_pwrctrl_buslevel_update(device, true);
 
 	pwrlevel = &pwr->pwrlevels[pwr->active_pwrlevel];
@@ -363,8 +332,8 @@ static ssize_t kgsl_pwrctrl_thermal_pwrlevel_store(struct device *dev,
 
 	mutex_lock(&device->mutex);
 
-	if (level > pwr->num_pwrlevels - 1)
-		level = pwr->num_pwrlevels - 1;
+	if (level > pwr->num_pwrlevels - 2)
+		level = pwr->num_pwrlevels - 2;
 
 	pwr->thermal_pwrlevel = level;
 
@@ -382,15 +351,10 @@ static ssize_t kgsl_pwrctrl_thermal_pwrlevel_show(struct device *dev,
 
 	struct kgsl_device *device = kgsl_device_from_dev(dev);
 	struct kgsl_pwrctrl *pwr;
-	unsigned int level;
 	if (device == NULL)
 		return 0;
 	pwr = &device->pwrctrl;
-	if (device->state == KGSL_STATE_SLUMBER)
- 	level = pwr->num_pwrlevels - 1;
- 	else
- 	level = pwr->active_pwrlevel;
-	return snprintf(buf, PAGE_SIZE, "%d\n", pwr->pwrlevels[level].gpu_freq);
+	return snprintf(buf, PAGE_SIZE, "%d\n", pwr->thermal_pwrlevel);
 }
 
 static ssize_t kgsl_pwrctrl_max_pwrlevel_store(struct device *dev,
@@ -457,8 +421,8 @@ static ssize_t kgsl_pwrctrl_min_pwrlevel_store(struct device *dev,
 		return ret;
 
 	mutex_lock(&device->mutex);
-	if (level > pwr->num_pwrlevels - 1)
-		level = pwr->num_pwrlevels - 1;
+	if (level > pwr->num_pwrlevels - 2)
+		level = pwr->num_pwrlevels - 2;
 
 	/* You can't set a minimum power level lower than the maximum */
 	if (level < pwr->max_pwrlevel)
@@ -622,19 +586,12 @@ static ssize_t kgsl_pwrctrl_gpuclk_show(struct device *dev,
 				    struct device_attribute *attr,
 				    char *buf)
 {
-	unsigned long freq;
 	struct kgsl_device *device = kgsl_device_from_dev(dev);
 	struct kgsl_pwrctrl *pwr;
 	if (device == NULL)
 		return 0;
 	pwr = &device->pwrctrl;
-	
-	if (device->state == KGSL_STATE_SLUMBER)
-		freq = pwr->pwrlevels[pwr->num_pwrlevels - 1].gpu_freq;
-	else
-		freq = kgsl_pwrctrl_active_freq(pwr);
-	
-	return snprintf(buf, PAGE_SIZE, "%lu\n", freq);
+	return snprintf(buf, PAGE_SIZE, "%ld\n", kgsl_pwrctrl_active_freq(pwr));
 }
 
 static ssize_t kgsl_pwrctrl_idle_timer_store(struct device *dev,
@@ -1410,15 +1367,15 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 		struct msm_bus_vectors *vector = &usecase->vectors[0];
 		if (vector->dst == MSM_BUS_SLAVE_EBI_CH0 &&
 				vector->ib != 0) {
-
-			if (i < KGSL_MAX_BUSLEVELS) {
-				/* Convert bytes to Mbytes. */
+			if (i < KGSL_MAX_BUSLEVELS)
+				/*
+				 * Want to convert bytes to Mbytes,
+				 * but msm_bus_of.c uses a strange macro
+				 *  #define KBTOB(a) (a * 1000ULL)
+				 * thats why 1024*1000, not 1024*1024
+				 */
 				ib_votes[i] =
-					DIV_ROUND_UP_ULL(vector->ib, 1048576)
-					- 1;
-				if (ib_votes[i] > ib_votes[max_vote_buslevel])
-					max_vote_buslevel = i;
-			}
+					DIV_ROUND_UP_ULL(vector->ib, 1024000);
 
 			for (k = 0; k < n; k++)
 				if (vector->ib == pwr->bus_ib[k]) {
@@ -1590,8 +1547,6 @@ EXPORT_SYMBOL(kgsl_pre_hwaccess);
  */
 static int _init(struct kgsl_device *device)
 {
-	/* Suspend the pwrscale if it is currently enabled. */
-	kgsl_pwrscale_sleep(device);
 	kgsl_pwrctrl_set_state(device, KGSL_STATE_INIT);
 	return 0;
 }
@@ -1625,25 +1580,19 @@ static int _wake(struct kgsl_device *device)
 	case KGSL_STATE_SLEEP:
 		kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_ON);
 		kgsl_pwrscale_wake(device);
-		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_ON);
 		/* fall through */
 	case KGSL_STATE_NAP:
 		/* Turn on the core clocks */
 		kgsl_pwrctrl_clk(device, KGSL_PWRFLAGS_ON, KGSL_STATE_ACTIVE);
+		/* Enable state before turning on irq */
 		kgsl_pwrctrl_set_state(device, KGSL_STATE_ACTIVE);
-
-		/*
-		 * No need to turn on/off irq here as it no longer affects
-		 * power collapse
-		 */
-
+		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_ON);
 		mod_timer(&device->idle_timer, jiffies +
 				device->pwrctrl.interval_timeout);
 	case KGSL_STATE_ACTIVE:
 		kgsl_pwrctrl_request_state(device, KGSL_STATE_NONE);
 		break;
 	case KGSL_STATE_INIT:
-		kgsl_pwrscale_wake(device);
 		kgsl_pwrctrl_set_state(device, KGSL_STATE_ACTIVE);
 		kgsl_pwrctrl_request_state(device, KGSL_STATE_NONE);
 		break;
@@ -1676,6 +1625,7 @@ _nap(struct kgsl_device *device)
 		*/
 		kgsl_pwrscale_update_stats(device);
 
+		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
 		kgsl_pwrctrl_clk(device, KGSL_PWRFLAGS_OFF, KGSL_STATE_NAP);
 		kgsl_pwrctrl_set_state(device, KGSL_STATE_NAP);
 	case KGSL_STATE_NAP:
@@ -1742,7 +1692,6 @@ _slumber(struct kgsl_device *device)
 		device->ftbl->suspend_context(device);
 		device->ftbl->stop(device);
 		kgsl_pwrscale_sleep(device);
-		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
 		kgsl_pwrctrl_set_state(device, KGSL_STATE_SLUMBER);
 		pm_qos_update_request(&device->pwrctrl.pm_qos_req_dma,
 						PM_QOS_DEFAULT_VALUE);

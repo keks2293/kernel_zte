@@ -74,7 +74,7 @@
 			linux,reserve-contiguous-region; 
 			linux,reserve-region; 
 			linux,remove-completely; 
-			reg = <0x0 0x8c200000 0x0 0x00200000>; 
+			reg = <0x0 0x9ff00000 0x0 0x00100000>; 
 			label = "pstore_reserve_mem"; 
 		};
 		
@@ -135,22 +135,6 @@
 		reg = <0x0b000000 0x1000>,
 		<0x0b002000 0x1000>;
 	};
-
-        ramoops {
-                compatible = "ramoops";
-                status = "ok";
-
-                /* This is tacked at the end of pheripheral_region@0 */
-                android,ramoops-buffer-start = <0x8c300000>;
-                android,ramoops-buffer-size = <0x100000>;
-                android,ramoops-console-size = <0x80000>;
-                android,ramoops-record-size = <0x20000>;
-                android,ramoops-dump-oops = <0x1>;
-                android,ramoops-hole {
-                        compatible = "qcom,msm-contig-mem";
-                        qcom,memblock-reserve = <0x8c200000 0x00200000>;
-                };
-       };
 
 	restart@4ab000 {
 		compatible = "qcom,pshold";
@@ -542,12 +526,12 @@
 		compatible = "qcom,msm-thermal";
 		qcom,sensor-id = <5>;
 		qcom,poll-ms = <250>;
-		qcom,limit-temp = <85>;
-		qcom,temp-hysteresis = <5>;
-		qcom,freq-step = <1>;
+		qcom,limit-temp = <60>;
+		qcom,temp-hysteresis = <10>;
+		qcom,freq-step = <2>;
 		qcom,freq-control-mask = <0xff>;
-		qcom,core-limit-temp = <95>;
-		qcom,core-temp-hysteresis = <5>;
+		qcom,core-limit-temp = <80>;
+		qcom,core-temp-hysteresis = <10>;
 		qcom,core-control-mask = <0xfe>;
 		qcom,hotplug-temp = <105>;
 		qcom,hotplug-temp-hysteresis = <15>;
@@ -1888,4 +1872,3 @@ comment by congshan end*/
 };
 
 #include "msm8939-gpu.dtsi"
-

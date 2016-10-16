@@ -27,10 +27,7 @@
 #include "NX512J/msm8939-mdss-pll.dtsi"
 #include "NX512J/msm8939-mdss.dtsi"
 #include "NX512J/msm8939-mtp-lcd.dtsi"
-#include "NX512J/msm8916-vbus-otg.dtsi"
 #include "NX512J/msm8939-mtp-breathlight.dtsi"
-#include "NX512J/msm8939-mtp-fuelgauge.dtsi"
-#include "NX512J/msm8939-mtp-charger.dtsi"
 
 / {
 	model = "Qualcomm Technologies, Inc. MSM 8939 MTP";

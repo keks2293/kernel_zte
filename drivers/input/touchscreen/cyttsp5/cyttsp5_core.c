@@ -5424,32 +5424,6 @@ exit:
 	return size;
 }
 
-static ssize_t cyttsp5_keypad_enable_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct cyttsp5_core_data *cd = dev_get_drvdata(dev);
-	struct cyttsp5_sysinfo *si = &cd->sysinfo;
-
-	return sprintf(buf, "%d\n", si->keypad_enable);
-}
-
-static ssize_t cyttsp5_keypad_enable_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t size)
-{
-	struct cyttsp5_core_data *cd = dev_get_drvdata(dev);
-	struct cyttsp5_sysinfo *si = &cd->sysinfo;
-	int rc;
-	unsigned long val;
-
-	rc = kstrtoul(buf, 10, &val);
-	if (rc != 0)
-		return rc;
-
-	si->keypad_enable = val ? 1 : 0;
-
-	return size;
-}
-
 static struct device_attribute attributes[] = {
 	__ATTR(ic_ver, S_IRUGO, cyttsp5_ic_ver_show, NULL),
 	__ATTR(drv_ver, S_IRUGO, cyttsp5_drv_ver_show, NULL),
@@ -5465,8 +5439,6 @@ static struct device_attribute attributes[] = {
 	__ATTR(panel_id, S_IRUGO, cyttsp5_panel_id_show, NULL),
 	__ATTR(touch_mode, S_IRUSR | S_IWUSR, cyttsp5_touch_mode_show,
 		cyttsp5_touch_mode_store),
-	__ATTR(keypad_enable, S_IRUSR | S_IWUSR, cyttsp5_keypad_enable_show,
-		cyttsp5_keypad_enable_store),
 };
 
 static int add_sysfs_interfaces(struct device *dev)
@@ -6090,4 +6062,3 @@ EXPORT_SYMBOL_GPL(cyttsp5_release);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Cypress TrueTouch(R) Standard Product Core Driver");
 MODULE_AUTHOR("Cypress Semiconductor <ttdrivers@cypress.com>");
-

@@ -15,7 +15,6 @@ mdss-mdp-objs += mdss_mdp_splash_logo.o
 mdss-mdp-objs += mdss_mdp_wb.o
 obj-$(CONFIG_FB_MSM_MDSS) += mdss-mdp.o
 obj-$(CONFIG_FB_MSM_MDSS) += mdss_mdp_debug.o
-obj-$(CONFIG_FB_MSM_MDSS_KCAL_CTRL) += mdss_mdp_kcal_ctrl.o
 
 ifeq ($(CONFIG_FB_MSM_MDSS),y)
 obj-$(CONFIG_DEBUG_FS) += mdss_debug.o mdss_debug_xlog.o
@@ -36,7 +35,6 @@ obj-$(CONFIG_FB_MSM_MDSS_EDP_PANEL) += mdss_edp.o
 obj-$(CONFIG_FB_MSM_MDSS_EDP_PANEL) += mdss_edp_aux.o
 
 obj-$(CONFIG_FB_MSM_MDSS) += mdss_io_util.o
-obj-$(CONFIG_FB_MSM_MDSS) += lcd_notify.o
 obj-$(CONFIG_FB_MSM_MDSS_HDMI_PANEL) += mdss_hdmi_tx.o
 obj-$(CONFIG_FB_MSM_MDSS_HDMI_PANEL) += mdss_hdmi_util.o
 obj-$(CONFIG_FB_MSM_MDSS_HDMI_PANEL) += mdss_hdmi_edid.o

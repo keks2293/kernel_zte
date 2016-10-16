@@ -2160,9 +2160,8 @@ static int qpnp_charger_read_dt_props(struct qpnp_lbc_chip *chip)
 	chip->cfg_charging_disabled =
 		of_property_read_bool(chip->spmi->dev.of_node,
 					"qcom,charging-disabled");
-#if defined(CONFIG_ZTEMT_BQ24296_CHARGE) || defined(CONFIG_ZTEMT_BQ24158_CHARGE)|| defined(CONFIG_ZTEMT_BQ24296M_CHARGE) 
-		chip->cfg_charging_disabled = 1;
-#endif  
+	chip->cfg_charging_disabled = 0;
+
 	/* Get the fake-batt-values property */
 	chip->cfg_use_fake_battery =
 			of_property_read_bool(chip->spmi->dev.of_node,
@@ -2194,6 +2193,7 @@ static int qpnp_charger_read_dt_props(struct qpnp_lbc_chip *chip)
 
 	chip->cfg_use_external_charger = of_property_read_bool(
 			chip->spmi->dev.of_node, "qcom,use-external-charger");
+	chip->cfg_use_external_charger = 0;
 
 	if (of_find_property(chip->spmi->dev.of_node,
 					"qcom,thermal-mitigation",

@@ -34,11 +34,6 @@
 #include <asm/pgtable.h>
 #include <asm/page.h>
 #include <asm/virt.h>
-#include "sp-adj-macros.S"
-
-#ifdef CONFIG_KEXEC_HARDBOOT
-#include <asm/kexec.h>
-#endif
 
 /*
  * swapper_pg_dir is the virtual address of the initial page table. We place
@@ -240,27 +235,6 @@ section_table:
 #endif
 
 ENTRY(stext)
-#ifdef CONFIG_KEXEC_HARDBOOT
-	/* Check hardboot page for a kexec kernel */
-	ldr	x21, =KEXEC_HB_PAGE_ADDR
-	ldr	x22, [x21]
-	ldr	x23, =KEXEC_HB_PAGE_MAGIC
-	cmp	x22, x23
-	beq	setup_hardboot
-#endif
-	str	xzr, [x21, #40] // zero out booted-via-hardboot flag
-	ldr	x23, =(0xfeedf00d)
-	cmp	x22, x23
-	bne	not_hardboot_entry
-	ldr	x22, =(0xadeadc0d)
-	str	x22, [x21]
-	adr	x22, stext
-	str	x22, [x21, #24]
-	str	x0, [x21, #32]
-	str	x22, [x21, #40] // we are booted via hardboot
-	ldr	x22, [x0]
-	str	x22, [x21, #48]
-not_hardboot_entry:
 	mov	x21, x0				// x21=FDT
 	bl	el2_setup			// Drop to EL1, w20=cpu_boot_mode
 	bl	__calc_phys_offset		// x24=PHYS_OFFSET, x28=PHYS_OFFSET-PAGE_OFFSET
@@ -272,6 +246,7 @@ not_hardboot_entry:
 	cbz	x23, __h_error_p		// invalid processor (x23=0)?
 	bl	__vet_fdt
 	bl	__create_page_tables		// x25=TTBR0, x26=TTBR1
+
 
 	/*
 	 * The following calls CPU specific code in a position independent
@@ -286,16 +261,6 @@ not_hardboot_entry:
 	ldr	x12, [x23, #CPU_INFO_SETUP]
 	add	x12, x12, x28			// __virt_to_phys
 	br	x12				// initialise processor
-
-setup_hardboot:
-	/* x21 has address of hardboot page */
-	/* Clear hardboot page magic to avoid boot loop. */
-	str	xzr, [x21]
-	/* TODO: setup MMU and caches to speed up relocation */
-	/* Jump to post-reboot relocation code 4KB in hardboot reserve */
-	add	x21, x21, #PAGE_SIZE
-	br	x21
-
 ENDPROC(stext)
 
 __h_error_p:
@@ -712,7 +677,6 @@ cpu_resume_after_mmu:
 	ldp	x25, x26, [sp, #64]
 	ldp	x27, x28, [sp, #80]
 	ldp	x29, lr, [sp], #96
-	restore_sp_from_page1 x3
 	ret
 ENDPROC(cpu_resume_after_mmu)
 
@@ -741,13 +705,8 @@ ENDPROC(__enable_mmu)
  *  x27 = *virtual* address to jump to upon completion
  *
  * other registers depend on the function called upon completion
- *
- * We align the entire function to the smallest power of two larger than it to
- * ensure it fits within a single block map entry. Otherwise were PHYS_OFFSET
- * close to the end of a 512MB or 1GB block we might require an additional
- * table to map the entire function.
  */
-	.align	4
+	.align	6
 __turn_mmu_on:
 	msr	sctlr_el1, x0
 	isb

@@ -32,10 +32,6 @@
 #include <soc/qcom/restart.h>
 #include <soc/qcom/watchdog.h>
 
-#ifdef CONFIG_KEXEC_HARDBOOT
-#include <asm/kexec.h>
-#endif
-
 #define EMERGENCY_DLOAD_MAGIC1    0x322A4F99
 #define EMERGENCY_DLOAD_MAGIC2    0xC67E4350
 #define EMERGENCY_DLOAD_MAGIC3    0x77777777
@@ -176,11 +172,6 @@ static int dload_set(const char *val, struct kernel_param *kp)
 
 	return 0;
 }
-void msm_set_download_mode(int mode)
-{
-	download_mode = mode;
-}
-EXPORT_SYMBOL(msm_set_download_mode);
 #else
 #define set_dload_mode(x) do {} while (0)
 
@@ -201,6 +192,11 @@ void msm_set_restart_mode(int mode)
 }
 EXPORT_SYMBOL(msm_set_restart_mode);
 
+void msm_set_download_mode(int mode)
+{
+	download_mode = mode;
+}
+EXPORT_SYMBOL(msm_set_download_mode);
 
 /*
  * Force the SPMI PMIC arbiter to shutdown so that no more SPMI transactions
@@ -469,19 +465,8 @@ static struct platform_driver msm_restart_driver = {
 	},
 };
 
-
-#ifdef CONFIG_KEXEC_HARDBOOT
-static void msm_kexec_hardboot_hook(void)
-{
-	qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
-}
-#endif
-
 static int __init msm_restart_init(void)
 {
-#ifdef CONFIG_KEXEC_HARDBOOT
-	kexec_hardboot_hook = msm_kexec_hardboot_hook;
-#endif
 	return platform_driver_register(&msm_restart_driver);
 }
 device_initcall(msm_restart_init);

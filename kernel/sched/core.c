@@ -160,10 +160,6 @@ void start_bandwidth_timer(struct hrtimer *period_timer, ktime_t period)
 DEFINE_MUTEX(sched_domains_mutex);
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
-#if defined(CONFIG_INTELLI_PLUG) || defined(CONFIG_HIMA_HOTPLUG)
-DEFINE_PER_CPU_SHARED_ALIGNED(struct nr_stats_s, runqueue_stats);
-#endif
-
 static void update_rq_clock_task(struct rq *rq, s64 delta);
 
 void update_rq_clock(struct rq *rq)
@@ -603,60 +599,6 @@ void resched_cpu(int cpu)
 }
 
 #ifdef CONFIG_NO_HZ_COMMON
-
-#ifdef CONFIG_SCHED_HMP
-
-__read_mostly unsigned int sysctl_power_aware_timer_migration;
-
-/* Return first cpu found in shallowest C-state in least power-cost cluster */
-static int _get_nohz_timer_target_hmp(void)
-{
-	int i, best_cpu = smp_processor_id();
-	int min_cost = INT_MAX, min_cstate = INT_MAX;
-
-	if (!sysctl_power_aware_timer_migration)
-		return nr_cpu_ids;
-
-	rcu_read_lock();
-
-	for_each_online_cpu(i) {
-		struct rq *rq = cpu_rq(i);
-		int cpu_cost = power_cost_at_freq(i, rq->max_possible_freq);
-		int cstate = rq->cstate;
-
-		if (power_delta_exceeded(cpu_cost, min_cost)) {
-			if (cpu_cost > min_cost)
-				continue;
-
-			best_cpu = i;
-			min_cost = cpu_cost;
-			min_cstate = cstate;
-			continue;
-		}
-
-		if (cstate < min_cstate) {
-			best_cpu = i;
-			min_cstate = cstate;
-		}
-	}
-	rcu_read_unlock();
-
-	return best_cpu;
-}
-
-#else
-
-static int _get_nohz_timer_target_hmp(void)
-{
-	/*
-	 * sched_enable_hmp = 0 for !CONFIG_SCHED_HMP, which means we should not
-	 * come here for !CONFIG_SCHED_HMP
-	 */
-	return raw_smp_processor_id();
-}
-
-#endif
-
 /*
  * In the semi idle case, use the nearest busy cpu for migrating timers
  * from an idle cpu.  This is good for power-savings.
@@ -668,17 +610,8 @@ static int _get_nohz_timer_target_hmp(void)
 int get_nohz_timer_target(void)
 {
 	int cpu = smp_processor_id();
-	int i, lower_power_cpu;
+	int i;
 	struct sched_domain *sd;
-
-	if (sched_enable_hmp) {
-		lower_power_cpu =  _get_nohz_timer_target_hmp();
-		if (lower_power_cpu < nr_cpu_ids)
-			return lower_power_cpu;
-	}
-
-	if (!idle_cpu(cpu))
-		return cpu;
 
 	rcu_read_lock();
 	for_each_domain(cpu, sd) {
@@ -2502,24 +2435,18 @@ static int cpufreq_notifier_trans(struct notifier_block *nb,
 {
 	struct cpufreq_freqs *freq = (struct cpufreq_freqs *)data;
 	unsigned int cpu = freq->cpu, new_freq = freq->new;
+	struct rq *rq = cpu_rq(cpu);
 	unsigned long flags;
-	int i;
 
 	if (val != CPUFREQ_POSTCHANGE)
 		return 0;
 
 	BUG_ON(!new_freq);
 
-	if (cpu_rq(cpu)->cur_freq == new_freq)
- 		return 0;
-
-	for_each_cpu(i, &cpu_rq(cpu)->freq_domain_cpumask) {
- 		struct rq *rq = cpu_rq(i);
- 		raw_spin_lock_irqsave(&rq->lock, flags);
- 		update_task_ravg(rq->curr, rq, TASK_UPDATE, sched_clock(), 0);
- 		rq->cur_freq = new_freq;
- 		raw_spin_unlock_irqrestore(&rq->lock, flags);
-}
+	raw_spin_lock_irqsave(&rq->lock, flags);
+	update_task_ravg(rq->curr, rq, TASK_UPDATE, sched_clock(), 0);
+	cpu_rq(cpu)->cur_freq = new_freq;
+	raw_spin_unlock_irqrestore(&rq->lock, flags);
 
 	return 0;
 }
@@ -3796,61 +3723,6 @@ unsigned long this_cpu_load(void)
 }
 
 
-#if defined(CONFIG_INTELLI_PLUG) || defined(CONFIG_HIMA_HOTPLUG)
-unsigned long avg_nr_running(void)
-{
-	unsigned long i, sum = 0;
-	unsigned int seqcnt, ave_nr_running;
-
-	for_each_online_cpu(i) {
-		struct nr_stats_s *stats = &per_cpu(runqueue_stats, i);
-		struct rq *q = cpu_rq(i);
-
-		/*
-		 * Update average to avoid reading stalled value if there were
-		 * no run-queue changes for a long time. On the other hand if
-		 * the changes are happening right now, just read current value
-		 * directly.
-		 */
-		seqcnt = read_seqcount_begin(&stats->ave_seqcnt);
-		ave_nr_running = do_avg_nr_running(q);
-		if (read_seqcount_retry(&stats->ave_seqcnt, seqcnt)) {
-			read_seqcount_begin(&stats->ave_seqcnt);
-			ave_nr_running = stats->ave_nr_running;
-		}
-
-		sum += ave_nr_running;
-	}
-
-	return sum;
-}
-EXPORT_SYMBOL(avg_nr_running);
-
-unsigned long avg_cpu_nr_running(unsigned int cpu)
-{
-	unsigned int seqcnt, ave_nr_running;
-
-	struct nr_stats_s *stats = &per_cpu(runqueue_stats, cpu);
-	struct rq *q = cpu_rq(cpu);
-
-	/*
-	 * Update average to avoid reading stalled value if there were
-	 * no run-queue changes for a long time. On the other hand if
-	 * the changes are happening right now, just read current value
-	 * directly.
-	 */
-	seqcnt = read_seqcount_begin(&stats->ave_seqcnt);
-	ave_nr_running = do_avg_nr_running(q);
-	if (read_seqcount_retry(&stats->ave_seqcnt, seqcnt)) {
-		read_seqcount_begin(&stats->ave_seqcnt);
-		ave_nr_running = stats->ave_nr_running;
-	}
-
-	return ave_nr_running;
-}
-EXPORT_SYMBOL(avg_cpu_nr_running);
-#endif
-
 /*
  * Global load-average calculations
  *
@@ -4495,20 +4367,6 @@ unsigned long long task_sched_runtime(struct task_struct *p)
 	unsigned long flags;
 	struct rq *rq;
 	u64 ns = 0;
-
-#if defined(CONFIG_64BIT) && defined(CONFIG_SMP)
- /*
-	* 64-bit doesn't need locks to atomically read a 64bit value.
-	* So we have a optimization chance when the task's delta_exec is 0.
-	* Reading ->on_cpu is racy, but this is ok.
-	*
-	* If we race with it leaving cpu, we'll take a lock. So we're correct.
-	* If we race with it entering cpu, unaccounted time is 0. This is
-	* indistinguishable from the read occurring a few cycles earlier.
-	*/
- if (!p->on_cpu)
- return p->se.sum_exec_runtime;
-#endif
 
 	rq = task_rq_lock(p, &flags);
 	ns = p->se.sum_exec_runtime + do_task_delta_exec(p, rq);
